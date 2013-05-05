@@ -67,7 +67,7 @@ def getServers(glist=gpus):
                 proxy.ping()
                 globals()['g%d' % k] = proxy
             except Exception, e:
-                raise Exception("No response from osfServer " + k + " error was: " + str(e)) 
+                raise Exception("No response from osfServer " + str(k) + " error was: " + str(e)) 
         gpud[k] = globals()['g%d' % k]
         gpud[k]._pyroReconnect()
 if __name__ == "__main__":
