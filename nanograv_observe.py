@@ -8,6 +8,7 @@ import time
 from parfile import psr_par
 import sys
 from guppi_daq import astro_utils
+import observe_utils
 
 useOsf = True # should we do real-time cyclic spectroscopy when obserivng at 327 and 430 MHz?
 
@@ -58,7 +59,7 @@ rcvrConfigs = {"L": dict(
                }
 
 
-def observe(session,endAt,projid, calSession, useOsf = useOsf):
+def observe(session,endAt,projid, calSession, useOsf = useOsf,test=False):
     if useOsf:
         logging.info("Checking real time cyclic spectroscopy hardware")
         try:
@@ -189,119 +190,30 @@ def observe(session,endAt,projid, calSession, useOsf = useOsf):
             lastBand = band
 
             
-
-    timeStart = time.time()
+    if test:
+        timeStart = startAt
+    else:
+        timeStart = time.time()
     
-    source,parfile,band = session[0]
-    par = psr_par(parfile)
-    try:
-        ra = par.RAJ
-        dec = par.DECJ
-    except:
-        try:
-            ra = par.RA
-            dec = par.DEC
-        except:
-            raise Exception( "Error reading RA/DEC from parfile.")
-            
-    rh,rm,rs = map(float,ra.split(':'))
-    dd,dm,ds = map(float,ra.split(':'))
-    radeg = astro_utils.hms_to_rad(rh,rm,rs)*astro_utils.RADTODEG
-    decdeg = dd + dm/60.0 + ds/3600.0
-    az,za = astro_utils.radec_to_azza(radeg,decdeg,epochToMJD(timeStart),scope="ARECIBO")
-    if za > 21:
-        ts = np.arange(timeStart,timeStart+7200,60.0)
-        zas = np.array([astro_utils.radec_to_azza(radeg,decdeg,epochToMJD(x),scope="ARECIBO")[1] for x in ts])
-        upTimes = ts[(zas<21)]
-        if len(upTimes) == 0:
-            raise Exception("First source %s does not rise within 2 hours of start time!!" % source)
-        riseTime = upTimes[0] # first time za is above limit is rise time
-        logging.info("Source %s does not rise until %s, so using that as the start time" % (source,time.ctime(riseTime)))
-        timeStart = riseTime
-
-
-    timeLeft = endAt - timeStart
-    if timeLeft < 0:
-        raise Exception("Error! end time %s is before now %s!" % (time.ctime(endAt),time.ctime(timeStart)))
-    print "Observation ending at", time.ctime(endAt)
-    print "Time remaining: %.1f minutes" %( timeLeft/60.0)
-    nsources = len(session)
-    timePerSource = timeLeft/nsources
-    print "Observing %d sources with %.1f minutes per source" % (nsources, timePerSource/60.0)
-    endTimes = np.zeros((len(session),))
-    tprev = timeStart
-    for n,(source,parfile,band) in enumerate(session):
-        tstop = tprev + timePerSource
-
-        if not os.path.exists(parfile):
-            raise Exception("Could not find this parfile! %s" % parfile)
-        par = psr_par(parfile)
-        try:
-            psr = par.PSRJ
-        except:
-            try:
-                psr = par.PSR
-            except:
-                raise Exception( "Error reading source name from parfile.")
-        try:
-            ra = par.RAJ
-            dec = par.DECJ
-        except:
-            try:
-                ra = par.RA
-                dec = par.DEC
-            except:
-                raise Exception( "Error reading RA/DEC from parfile.")
-            
-        rh,rm,rs = map(float,ra.split(':'))
-        dd,dm,ds = map(float,dec.split(':'))
-        radeg = astro_utils.hms_to_rad(rh,rm,rs)*astro_utils.RADTODEG
-        decdeg = dd + dm/60.0 + ds/3600.0
-        az,zast = astro_utils.radec_to_azza(radeg,decdeg,epochToMJD(tprev),scope="ARECIBO")
-        az,za = astro_utils.radec_to_azza(radeg,decdeg,epochToMJD(tstop),scope="ARECIBO")
-        print "%s start %.1f end %.1f" % (source,zast,za)
-        if za > 20:
-            ts = np.arange(tstop-3600,tstop,60.0)
-            zas = np.array([astro_utils.radec_to_azza(radeg,decdeg,epochToMJD(x),scope="ARECIBO")[1] for x in ts])
-            upTimes = ts[(zas<20)]
-            if len(upTimes) == 0:
-                print "Source %s will never be up, skipping it" % source
-                tstop = tprev
-                endTimes[n] = tstop
-                continue
-            setTime = upTimes[-1] # the last time za is < 20
-            if n > 1 and session[n-1][0] == source: #same source
-                prevStart = endTimes[n-2]
-                timeForThisSource = setTime - prevStart
-                endTimeForLast = prevStart + timeForThisSource/2.0
-                logging.info("Source %s will set at %s so updating end times to %s and %s instead of original %s" % (source,time.ctime(setTime),time.ctime(endTimeForLast),time.ctime(setTime),time.ctime(tstop)))
-                endTimes[n-1] = endTimeForLast
-                endTimes[n] = setTime
-                tstop = setTime
-            else:
-                logging.info("Source %s will set at %s so using this as the end time instead of original %s" % (source,time.ctime(setTime),time.ctime(tstop)))
-                tstop = setTime
-            
-        #print "Observing",source,"at",band,"from",time.ctime(tprev),"to",time.ctime(tstop)
-        endTimes[n] = tstop
-        tprev = tstop
+    riseSetList,startTimes,stopTimes,scanEndTimes = observe_utils.generateObservingPlan(session,timeStart,endAt)    
+    
             
     print "\n=== Observing Plan ===\n"
     for n,(source,parfile,band) in enumerate(session):
         if n == 0:
             tstart = timeStart
              
-        print "Observing",source,"at",band,"from",time.ctime(tstart),"to",time.ctime(endTimes[n]), ("(%.1f mins)" % ((endTimes[n]-tstart)/60.0))
-        tstart = endTimes[n]
+        print "Observing",source,"at",band,"from",time.ctime(tstart),"to",time.ctime(scanEndTimes[n]), ("(%.1f mins)" % ((scanEndTimes[n]-tstart)/60.0))
+        tstart = scanEndTimes[n]
         
     print "\n"
     print timeStart,time.time()
-    while timeStart > time.time():
+    while timeStart > time.time() and not test:
         print ("\r%.1f minutes until start time" % ((timeStart -time.time())/60.0)),
         sys.stdout.flush()
         time.sleep(10)
     print "\nstarting..."
-    for (source,parfile,band),endTime in zip(session,endTimes):
+    for (source,parfile,band),endTime in zip(session,scanEndTimes):
         logging.info("\n\n*** Slew to source: "+ source)
         sourceStartTime = time.time()
         timeForThisSource = endTime - sourceStartTime
@@ -317,7 +229,7 @@ def observe(session,endAt,projid, calSession, useOsf = useOsf):
             else:
                 logging.info("previous PUPPI mode was the same as current, so not reconfiguring. Mode is: " + mode)
 
-        print "\n*** When on source, adjust IF powers"
+        print "\n*** When on source, adjust IF powers (auto-level IF1, then auto-level IF2)"
         if useOsf and band in ['327', '430']:
             print "Set IF2 Auto-adjust offset to 18 for real-time cyclic spectroscopy hardware."
         
@@ -490,7 +402,7 @@ def observe(session,endAt,projid, calSession, useOsf = useOsf):
     if useOsf:
         logging.info("Finishing up; making sure cyclic spectrometer is turned off.")
         osf.stopData()
-        osf.killAll()
+        osf.killAll(osfnodes)
         
 
 ### Puppi Atten stuff (break out into new module)
@@ -607,11 +519,12 @@ def epochToMJD(t=None):
     
 if __name__ == "__main__":
     calSession = []
+    test = False
     print sys.argv
     if len(sys.argv) != 2:
         print "please specify session definition file"
         sys.exit(1)
     execfile(sys.argv[1])
-    observe(session,endAt,projid,calSession=calSession)
+    observe(session,endAt,projid,calSession=calSession,test=test)
     
     
