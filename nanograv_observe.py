@@ -73,6 +73,7 @@ def observe(session,endAt,projid, calSession, useOsf = useOsf,test=False):
         try:
             osf.checkRoach()
             osf.stopData()
+            osf.killAll(osfnodes)
         except:
             logging.exception("Found ROACH not in expected state; trying to reprogram")
             try:
@@ -195,7 +196,7 @@ def observe(session,endAt,projid, calSession, useOsf = useOsf,test=False):
     else:
         timeStart = time.time()
     
-    riseSetList,startTimes,stopTimes,scanEndTimes = observe_utils.generateObservingPlan(session,timeStart,endAt)    
+    riseSetList,startTimes,stopTimes,scanEndTimes = observe_utils.generateObservingPlan(session,timeStart,endAt,minTimePerSource=minTimePerSource)    
     
             
     print "\n=== Observing Plan ===\n"
@@ -321,7 +322,10 @@ def observe(session,endAt,projid, calSession, useOsf = useOsf,test=False):
                 osf.killAll(osfnodes)
                 osf.monitor(osfnodes)
                 osf.autoAtten()
-                osf.autoLevel(gpus=osfnodes, pass2=False)
+                try:
+                    osf.autoLevel(gpus=osfnodes, pass2=False)
+                except Exception, e:
+                    logging.warn("Per-channel auto leveling failed, proceeding anyway. Error was %s" % str(e))
                 tdspsr = calend - time.time()
                 if tdspsr < 10:
                     logging.warning("Ran out of time for dspsr cal")
@@ -389,6 +393,7 @@ def observe(session,endAt,projid, calSession, useOsf = useOsf,test=False):
                 logging.info("starting %.1f minute dspsr scan" % (tdspsr/60.0))
                 osf.startDspsr(gpus=osfnodes, scanlen=tdspsr,ncyclic=256,nbin=256,extra='-nsub 12',lsubint=10.0,countdown=False,scannum=scannum)
             
+            logging.info("%.1f minute observation on %s should finish around %s" % (tscan/60.0, psr, time.ctime(time.time()+tscan)))
             print "waiting for scan to finish"
             
             while gup.get("GPU5/DAQ/DAQSTATE") != 'stopped':
@@ -520,6 +525,7 @@ def epochToMJD(t=None):
 if __name__ == "__main__":
     calSession = []
     test = False
+    minTimePerSource = 2200.0
     print sys.argv
     if len(sys.argv) != 2:
         print "please specify session definition file"
