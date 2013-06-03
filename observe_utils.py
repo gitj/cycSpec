@@ -9,7 +9,7 @@ from parfile import psr_par
 
 zaLimit = 19.6
 
-def generateObservingPlan(session,startAt,endAt):
+def generateObservingPlan(session,startAt,endAt,minTimePerSource=2200.0):
     lastRise = startAt
     radecs = {}
     riseSet = {}
@@ -38,7 +38,7 @@ def generateObservingPlan(session,startAt,endAt):
         
         ts = np.arange(lastRise-2*3600,lastRise+5*3600,60.0) 
         zas = np.array([astro_utils.radec_to_azza(radeg,decdeg,epochToMJD(x),scope="ARECIBO")[1] for x in ts])
-        print zas[0],zas[-1]
+        #print zas[0],zas[-1]
         upTimes = ts[(zas<zaLimit)]
         keyHole = ts[(zas<2.0)]
         if len(keyHole):
@@ -59,7 +59,7 @@ def generateObservingPlan(session,startAt,endAt):
     if last[1]>endAt:
         last = (last[0],endAt)
     riseSetList[-1] = last
-    ss,fv = optimizeSchedule(riseSetList)
+    ss,fv = optimizeSchedule(riseSetList, minTimePerSource = minTimePerSource)
     startTimes = ss[::2]
     stopTimes = ss[1::2]
     sourceEndTimes = dict(zip(parfiles,stopTimes))
@@ -92,7 +92,7 @@ def generateObservingPlan(session,startAt,endAt):
         lastpar = parfile
     return riseSetList,startTimes,stopTimes,scanEndTimes
 
-def optimizeSchedule(riseSetActual,minTimePerSource = 2800.,debug=False):
+def optimizeSchedule(riseSetActual,minTimePerSource = 2200.,debug=False):
     from functools import partial
     t0 = riseSetActual[0][0]
     riseSet = [(x-t0,y-t0) for (x,y) in riseSetActual]
@@ -172,10 +172,11 @@ def optimizeSchedule(riseSetActual,minTimePerSource = 2800.,debug=False):
         best = x
         mintime += 60.0
     if best is None:
-        raise Exception("Failed to find solution!")
+        raise Exception("Failed to find a solution while optimizing the schedule!\nTry reducing the minTimePerSource parameter.")
     x = best
 #    print x0
     x = x + t0
+    print " "
     print "Total time observing:",np.sum(x[1::2]-x[::2])
     for ns in range(nsources):
         print "rise",time.ctime(riseSetActual[ns][0]),"start",time.ctime(x[2*ns])
