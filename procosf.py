@@ -99,8 +99,9 @@ def cleanAndNormalize(on,off,discard=0.01):
     ndat = np.prod(shape)
     ds.shape = (ndat,)
     ordering = ds.argsort()
-    ds[ordering[:int(ndat*discard)]] = 0.0
-    ds[ordering[-int(ndat*discard):]] = 0.0
+    if ndat*discard:
+        ds[ordering[:int(ndat*discard)]] = 0.0
+        ds[ordering[-int(ndat*discard):]] = 0.0
     ds.shape = shape
     return ds.mean(1)  #scrunch the polns
 
@@ -118,6 +119,9 @@ pulseRegions = {('J2229+2643',327): ((100,180),(200,250)),
                 ('0030+0451', 430): ((0,36), (175,225)),
                 ('1640+2224', 430): ((223,250), (50,200)),
                 ('1855+09', 430): ((212,246), (10,90)),
+                ('1741+1351',430): ((200,230),(0,100)),
+                ('1923+2515',430): ((0,23),(100,200)),
+                ('B1937+21',430): ((125,150),(185,250)),
                 }
 
 def doAllPlots():
@@ -154,9 +158,9 @@ def makePdf(pngs,pdfname):
     print cmd
     os.system(cmd)
 
-def plotDynSpecForScan(sn,mjd):
+def plotDynSpecForScan(sn,mjd,baseDataDir='/lakitu/data/P2721',plotDir = '/home/gjones/plots',discard=0.01):
     import psrchive
-    files = glob.glob('/lakitu/data/P2721/gpu*/rt/rtcs_%d*_%04d_*%04d.ar.fix' % (mjd,sn,1))
+    files = glob.glob(os.path.join(baseDataDir,'gpu*/rt/rtcs_%d*_%04d_*%04d.ar.fix' % (mjd,sn,1)))
     if len(files) == 0:
         print "found no files for scan",sn
         return
@@ -178,7 +182,7 @@ def plotDynSpecForScan(sn,mjd):
         return
     print "found source", source,"band", band, "for file", files[0]
     print "getting dynamic spectrum data"
-    on,off,frqs,times = getDynSpec(('/lakitu/data/P2721/gpu*/rt/rtcs_%d*_%04d_' % (mjd,sn))+ '*%04d.ar.fix', band, onp, offp)
+    on,off,frqs,times = getDynSpec(os.path.join(baseDataDir,'gpu*/rt/rtcs_%d*_%04d_' %(mjd,sn)) + '*%04d.ar.fix', band, onp, offp)
     
     # XXX Hack to avoid bug in ACF code for odd number of subints
     if on.shape[0] % 2 == 1:
@@ -186,19 +190,20 @@ def plotDynSpecForScan(sn,mjd):
         off = off[:-1]
         times = times[:-1]
     print "cleaning and normalizing"
-    ds = cleanAndNormalize(on, off)
+    ds = cleanAndNormalize(on, off,discard=discard)
     times= times[:ds.shape[0]]  #remove last time entry if cleaner killed last subint
     print "computing ACF"
     acf = computeAcf(ds)
     fig = Figure(figsize=(10,12))
     fig.subplots_adjust(left=0.09,bottom=0.05,top=0.95,right=0.95)
     plotDynSpecAcf(ds,acf,frqs,times,fig=fig)
-    fname = os.path.join('/home/gjones/plots',(os.path.split(files[0])[1] + '_'+ 'dynspec.png'))
+    fname = os.path.join(plotDir,(os.path.split(files[0])[1] + '_'+ 'dynspec.png'))
     print fname
     esc_fname = fname.replace('_',r'\_')
     fig.suptitle(('%s @ %d MHz AO %s' % (source,band,esc_fname)),size='medium')
     canvas = FigureCanvasAgg(fig)
     canvas.print_figure(fname)
+    os.system('convert %s -compress jpeg -quality 50 %s.pdf' % (fname,fname))
     return ds,acf,frqs,times,source,band,epoch,fname
 
 def plotDynSpecAcf(ds,acf,frqs,times,fig = None):
