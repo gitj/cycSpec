@@ -9,7 +9,7 @@ from parfile import psr_par
 
 zaLimit = 19.6
 
-def generateObservingPlan(session,startAt,endAt,minTimePerSource=2200.0):
+def generateObservingPlan(session,startAt,endAt,minTimePerSource=2200.0, tslew = 600.0):
     lastRise = startAt
     radecs = {}
     riseSet = {}
@@ -74,7 +74,7 @@ def generateObservingPlan(session,startAt,endAt,minTimePerSource=2200.0):
     scanEndTimes = []
     scanStart = begin
     lastpar = None
-    tslew = 600.0
+    
     for source,parfile,band in session:
         sourceEnd = sourceEndTimes[parfile]
         sourceStart = sourceStartTimes[parfile]
@@ -93,6 +93,7 @@ def generateObservingPlan(session,startAt,endAt,minTimePerSource=2200.0):
     return riseSetList,startTimes,stopTimes,scanEndTimes
 
 def optimizeSchedule(riseSetActual,minTimePerSource = 2200.,debug=False):
+    print "optimizing schedule..."
     from functools import partial
     t0 = riseSetActual[0][0]
     riseSet = [(x-t0,y-t0) for (x,y) in riseSetActual]
@@ -173,7 +174,23 @@ def optimizeSchedule(riseSetActual,minTimePerSource = 2200.,debug=False):
         mintime += 60.0
     if best is None:
         raise Exception("Failed to find a solution while optimizing the schedule!\nTry reducing the minTimePerSource parameter.")
+    
     x = best
+    
+    for ns in range(nsources-1):
+        #print ns
+        stop = x[2*ns+1]
+        nextstart = x[2*(ns+1)]
+        sets = riseSet[ns][1]
+        nextrise = riseSet[ns+1][0]
+        if np.abs(stop-nextstart) > 30 and stop < sets:
+            if sets < nextstart:
+                print "extending to set time by", (sets-stop)
+                x[2*ns+1] = sets
+            else:
+                x[2*ns+1] = nextstart # update stop time
+                print "extending to next start time by", (nextstart-stop)
+            
 #    print x0
     x = x + t0
     print " "

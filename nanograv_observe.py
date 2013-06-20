@@ -196,7 +196,7 @@ def observe(session,endAt,projid, calSession, useOsf = useOsf,test=False):
     else:
         timeStart = time.time()
     
-    riseSetList,startTimes,stopTimes,scanEndTimes = observe_utils.generateObservingPlan(session,timeStart,endAt,minTimePerSource=minTimePerSource)    
+    riseSetList,startTimes,stopTimes,scanEndTimes = observe_utils.generateObservingPlan(session,timeStart,endAt,minTimePerSource=minTimePerSource, tslew=slewTime)    
     
             
     print "\n=== Observing Plan ===\n"
@@ -526,6 +526,7 @@ if __name__ == "__main__":
     calSession = []
     test = False
     minTimePerSource = 2200.0
+    slewTime= 10*60.
     print sys.argv
     if len(sys.argv) != 2:
         print "please specify session definition file"

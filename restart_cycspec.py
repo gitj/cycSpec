@@ -8,6 +8,16 @@ cmd = 'gpu_run "pkill -f gjones"'
 print cmd
 os.system(cmd)
 
+#print "Checking data buffers"
+#cmd = 'gpu_run "source /home/gpu/gjones/puppi.sh; /home/gpu/gjones/guppi_daq/bin/check_guppi_databuf -c -i1 -n24 -s32"'
+#print cmd
+#os.system(cmd)
+
+print "Checking status memory"
+cmd = 'gpu_run "source /home/gpu/gjones/puppi.sh; /home/gpu/gjones/guppi_daq/bin/check_guppi_status"'
+print cmd
+os.system(cmd)
+
 print "Stopping pyro nameserver"
 cmd = 'pkill -f Pyro'
 print cmd
